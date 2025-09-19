@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import api from "../services/api";
+import { formatFileSize, formatDate } from "../utils/helpers";
 import {
   FileText,
   Upload,
@@ -20,6 +21,8 @@ const Dashboard = () => {
     sharedDocuments: 0,
     recentDocuments: [],
     sharedWithMe: [],
+    totalFileSize: 0,
+    lastActivity: null,
   });
   const [loading, setLoading] = useState(true);
 
@@ -29,31 +32,104 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
+      setLoading(true);
+
+      // Fetch documents and shared documents in parallel
       const [documentsRes, sharedRes] = await Promise.all([
         api.get("/documents?limit=5"),
-        api.get("/share/received"),
+        api.get("/share/received").catch((err) => {
+          console.warn("Share received failed:", err);
+          return { data: { sharedDocuments: [] } };
+        }),
       ]);
+
+      // Calculate total file size
+      const allDocsRes = await api.get("/documents?limit=1000").catch((err) => {
+        console.warn("All docs fetch failed:", err);
+        return { data: { documents: [] } };
+      });
+
+      const totalFileSize =
+        allDocsRes.data.documents?.reduce(
+          (sum, doc) => sum + (doc.fileSize || 0),
+          0
+        ) || 0;
+
+      // Get last activity (most recent document or share)
+      const lastActivity = getLastActivity(
+        documentsRes.data.documents,
+        sharedRes.data.sharedDocuments
+      );
 
       setStats({
         totalDocuments: documentsRes.data.total || 0,
         sharedDocuments: sharedRes.data.sharedDocuments?.length || 0,
         recentDocuments: documentsRes.data.documents || [],
         sharedWithMe: sharedRes.data.sharedDocuments?.slice(0, 3) || [],
+        totalFileSize,
+        lastActivity,
       });
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
+      // Set default values on error
+      setStats({
+        totalDocuments: 0,
+        sharedDocuments: 0,
+        recentDocuments: [],
+        sharedWithMe: [],
+        totalFileSize: 0,
+        lastActivity: null,
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, link }) => (
+  const getLastActivity = (documents, sharedDocs) => {
+    const allDates = [];
+
+    if (documents?.length > 0) {
+      allDates.push(new Date(documents[0].createdAt));
+    }
+
+    if (sharedDocs?.length > 0) {
+      allDates.push(new Date(sharedDocs[0].createdAt));
+    }
+
+    if (user?.lastLogin) {
+      allDates.push(new Date(user.lastLogin));
+    }
+
+    if (allDates.length === 0) return null;
+
+    return new Date(Math.max(...allDates));
+  };
+
+  const formatLastActivity = (date) => {
+    if (!date) return "Never";
+
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+  };
+
+  const StatCard = ({ title, value, icon: Icon, color, link, subtitle }) => (
     <div className={`card p-6 ${link ? "card-hover" : ""}`}>
       <Link to={link || "#"} className={link ? "" : "pointer-events-none"}>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-600">{title}</p>
             <p className={`text-3xl font-bold ${color}`}>{value}</p>
+            {subtitle && (
+              <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+            )}
           </div>
           <div
             className={`p-3 rounded-full ${color
@@ -65,26 +141,6 @@ const Dashboard = () => {
         </div>
       </Link>
     </div>
-  );
-
-  const QuickAction = ({ title, description, icon: Icon, link, color }) => (
-    <Link to={link} className="card-hover p-6 group">
-      <div className="flex items-start space-x-4">
-        <div
-          className={`p-3 rounded-lg ${color
-            .replace("text", "bg")
-            .replace("-600", "-100")} group-hover:${color
-            .replace("text", "bg")
-            .replace("-600", "-200")} transition-colors`}
-        >
-          <Icon className={`h-6 w-6 ${color}`} />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <p className="text-gray-600 mt-1">{description}</p>
-        </div>
-      </div>
-    </Link>
   );
 
   if (loading) {
@@ -129,18 +185,20 @@ const Dashboard = () => {
           />
           <StatCard
             title="Storage Used"
-            value="2.4 GB"
+            value={formatFileSize(stats.totalFileSize)}
             icon={TrendingUp}
             color="text-purple-600"
+            subtitle={`${stats.totalDocuments} files`}
           />
           <StatCard
             title="Last Activity"
-            value="2 hrs ago"
+            value={formatLastActivity(stats.lastActivity)}
             icon={Clock}
             color="text-orange-600"
           />
         </div>
 
+        {/* Rest of the component remains the same */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Quick Actions */}
           <div className="lg:col-span-2">
@@ -148,34 +206,69 @@ const Dashboard = () => {
               Quick Actions
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <QuickAction
-                title="Upload Document"
-                description="Add new documents to your secure vault"
-                icon={Upload}
-                link="/upload"
-                color="text-blue-600"
-              />
-              <QuickAction
-                title="Share Documents"
-                description="Share documents securely with family members"
-                icon={Share2}
-                link="/share"
-                color="text-green-600"
-              />
-              <QuickAction
-                title="View All Documents"
-                description="Browse and manage your document collection"
-                icon={FileText}
-                link="/documents"
-                color="text-purple-600"
-              />
-              <QuickAction
-                title="Security Settings"
-                description="Manage your account and security preferences"
-                icon={Shield}
-                link="/profile"
-                color="text-red-600"
-              />
+              <Link to="/upload" className="card-hover p-6 group">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                    <Upload className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Upload Document
+                    </h3>
+                    <p className="text-gray-600 mt-1">
+                      Add new documents to your secure vault
+                    </p>
+                  </div>
+                </div>
+              </Link>
+
+              <Link to="/share" className="card-hover p-6 group">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 rounded-lg bg-green-100 group-hover:bg-green-200 transition-colors">
+                    <Share2 className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Share Documents
+                    </h3>
+                    <p className="text-gray-600 mt-1">
+                      Share documents securely with family members
+                    </p>
+                  </div>
+                </div>
+              </Link>
+
+              <Link to="/documents" className="card-hover p-6 group">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-colors">
+                    <FileText className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      View All Documents
+                    </h3>
+                    <p className="text-gray-600 mt-1">
+                      Browse and manage your document collection
+                    </p>
+                  </div>
+                </div>
+              </Link>
+
+              <Link to="/profile" className="card-hover p-6 group">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 rounded-lg bg-red-100 group-hover:bg-red-200 transition-colors">
+                    <Shield className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Security Settings
+                    </h3>
+                    <p className="text-gray-600 mt-1">
+                      Manage your account and security preferences
+                    </p>
+                  </div>
+                </div>
+              </Link>
             </div>
           </div>
 
@@ -214,7 +307,7 @@ const Dashboard = () => {
                           {doc.title}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {new Date(doc.createdAt).toLocaleDateString()}
+                          {formatDate(doc.createdAt)}
                         </p>
                       </div>
                     </div>
