@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import toast from "react-hot-toast";
@@ -36,30 +36,37 @@ const Profile = () => {
   });
   const [errors, setErrors] = useState({});
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
+  // Then wrap the handleInputChange function:
+  const handleInputChange = useCallback(
+    (e) => {
+      const { name, value } = e.target;
 
-    if (name.includes("address.")) {
-      const addressField = name.split(".")[1];
-      setProfileForm({
-        ...profileForm,
-        address: {
-          ...profileForm.address,
-          [addressField]: value,
-        },
-      });
-    } else {
-      setProfileForm({
-        ...profileForm,
-        [name]: value,
-      });
-    }
+      if (name.startsWith("address.")) {
+        const addressField = name.split(".")[1];
+        setProfileForm((prevForm) => ({
+          ...prevForm,
+          address: {
+            ...prevForm.address,
+            [addressField]: value,
+          },
+        }));
+      } else {
+        setProfileForm((prevForm) => ({
+          ...prevForm,
+          [name]: value,
+        }));
+      }
 
-    // Clear errors
-    if (errors[name]) {
-      setErrors({ ...errors, [name]: "" });
-    }
-  };
+      if (errors[name]) {
+        setErrors((prevErrors) => {
+          const newErrors = { ...prevErrors };
+          delete newErrors[name];
+          return newErrors;
+        });
+      }
+    },
+    [errors]
+  );
 
   const validateForm = () => {
     const newErrors = {};
@@ -129,7 +136,7 @@ const Profile = () => {
 
   const ProfileTab = () => (
     <div className="space-y-6">
-      {/* Profile Picture */}
+      {/* Profile Picture section stays the same */}
       <div className="card p-6">
         <div className="flex items-center space-x-6">
           <div className="relative">
@@ -173,20 +180,56 @@ const Profile = () => {
           <h3 className="text-lg font-semibold text-gray-900">
             Personal Information
           </h3>
-          <button
-            onClick={() => (editMode ? handleSaveProfile() : setEditMode(true))}
-            disabled={loading}
-            className="btn-primary flex items-center"
-          >
-            {loading ? (
-              <div className="w-4 h-4 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
-            ) : editMode ? (
-              <Save className="w-4 h-4 mr-2" />
-            ) : (
+          {!editMode ? (
+            <button
+              onClick={() => setEditMode(true)}
+              className="btn-primary flex items-center"
+            >
               <Edit className="w-4 h-4 mr-2" />
-            )}
-            {editMode ? "Save Changes" : "Edit Profile"}
-          </button>
+              Edit Profile
+            </button>
+          ) : (
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setEditMode(false);
+                  // Reset form data to original values
+                  setProfileForm({
+                    name: user?.name || "",
+                    phone: user?.phone || "",
+                    address: {
+                      street: user?.address?.street || "",
+                      city: user?.address?.city || "",
+                      state: user?.address?.state || "",
+                      pincode: user?.address?.pincode || "",
+                    },
+                  });
+                  setErrors({});
+                }}
+                className="btn-secondary"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={loading}
+                className="btn-primary flex items-center"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -200,9 +243,12 @@ const Profile = () => {
                 className={`form-input ${errors.name ? "border-red-500" : ""}`}
                 value={profileForm.name}
                 onChange={handleInputChange}
+                placeholder="Enter your full name"
               />
             ) : (
-              <p className="text-gray-900 py-2">{user?.name}</p>
+              <p className="text-gray-900 py-2">
+                {user?.name || "Not provided"}
+              </p>
             )}
             {errors.name && <p className="form-error">{errors.name}</p>}
           </div>
@@ -227,6 +273,8 @@ const Profile = () => {
                 className={`form-input ${errors.phone ? "border-red-500" : ""}`}
                 value={profileForm.phone}
                 onChange={handleInputChange}
+                placeholder="Enter 10-digit phone number"
+                maxLength="10"
               />
             ) : (
               <div className="flex items-center py-2">
@@ -319,7 +367,8 @@ const Profile = () => {
                   }`}
                   value={profileForm.address.pincode}
                   onChange={handleInputChange}
-                  placeholder="Enter pincode"
+                  placeholder="Enter 6-digit pincode"
+                  maxLength="6"
                 />
               ) : (
                 <p className="text-gray-900 py-2">
@@ -332,37 +381,6 @@ const Profile = () => {
             </div>
           </div>
         </div>
-
-        {editMode && (
-          <div className="flex justify-end space-x-3 mt-6 pt-6 border-t border-gray-200">
-            <button
-              onClick={() => {
-                setEditMode(false);
-                setProfileForm({
-                  name: user?.name || "",
-                  phone: user?.phone || "",
-                  address: {
-                    street: user?.address?.street || "",
-                    city: user?.address?.city || "",
-                    state: user?.address?.state || "",
-                    pincode: user?.address?.pincode || "",
-                  },
-                });
-                setErrors({});
-              }}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveProfile}
-              disabled={loading}
-              className="btn-primary"
-            >
-              Save Changes
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

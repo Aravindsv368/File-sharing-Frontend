@@ -116,6 +116,37 @@ const DocumentShare = () => {
     }
   };
 
+  const handleDownloadShared = async (documentId, originalName) => {
+    try {
+      console.log("Attempting to download shared document:", documentId);
+
+      // Use the regular document download endpoint - shared documents should be accessible if user has permission
+      const response = await api.get(`/documents/${documentId}/download`, {
+        responseType: "blob",
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", originalName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Download started");
+    } catch (error) {
+      console.error("Download error:", error);
+      if (error.response?.status === 404) {
+        toast.error("Document not found or access denied");
+      } else if (error.response?.status === 403) {
+        toast.error("You do not have permission to download this document");
+      } else {
+        toast.error("Failed to download document");
+      }
+    }
+  };
+
   const ShareModal = () => {
     if (!showShareModal || !selectedDocument) return null;
 
@@ -163,12 +194,13 @@ const DocumentShare = () => {
                   className="form-input"
                   placeholder="Enter family member's email"
                   value={shareForm.shareWithEmail}
-                  onChange={(e) =>
-                    setShareForm({
-                      ...shareForm,
-                      shareWithEmail: e.target.value,
-                    })
-                  }
+                  onChange={useCallback((e) => {
+                    const newValue = e.target.value;
+                    setShareForm((prev) => ({
+                      ...prev,
+                      shareWithEmail: newValue,
+                    }));
+                  }, [])}
                 />
               </div>
 
@@ -178,12 +210,13 @@ const DocumentShare = () => {
                 <select
                   className="form-input"
                   value={shareForm.permissions}
-                  onChange={(e) =>
-                    setShareForm({
-                      ...shareForm,
-                      permissions: e.target.value,
-                    })
-                  }
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setShareForm((prev) => ({
+                      ...prev,
+                      permissions: newValue,
+                    }));
+                  }}
                 >
                   {Object.entries(PERMISSIONS).map(([key, label]) => (
                     <option key={key} value={key}>
@@ -199,12 +232,13 @@ const DocumentShare = () => {
                 <select
                   className="form-input"
                   value={shareForm.relationshipType}
-                  onChange={(e) =>
-                    setShareForm({
-                      ...shareForm,
-                      relationshipType: e.target.value,
-                    })
-                  }
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setShareForm((prev) => ({
+                      ...prev,
+                      relationshipType: newValue,
+                    }));
+                  }}
                 >
                   {Object.entries(RELATIONSHIP_TYPES).map(([key, label]) => (
                     <option key={key} value={key}>
@@ -223,12 +257,13 @@ const DocumentShare = () => {
                   placeholder="Add a personal message..."
                   maxLength="200"
                   value={shareForm.shareMessage}
-                  onChange={(e) =>
-                    setShareForm({
-                      ...shareForm,
-                      shareMessage: e.target.value,
-                    })
-                  }
+                  onChange={useCallback((e) => {
+                    const newValue = e.target.value;
+                    setShareForm((prev) => ({
+                      ...prev,
+                      shareMessage: newValue,
+                    }));
+                  }, [])}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   {shareForm.shareMessage.length}/200 characters
@@ -319,25 +354,27 @@ const DocumentShare = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-          <span
-            className={`px-2 py-1 text-xs rounded-full ${
-              shared.permissions === "download"
-                ? "bg-green-100 text-green-800"
-                : "bg-blue-100 text-blue-800"
-            }`}
-          >
-            {shared.permissions === "download" ? (
-              <div className="flex items-center">
-                <Download className="w-3 h-3 mr-1" />
-                Download
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <Eye className="w-3 h-3 mr-1" />
-                View
-              </div>
-            )}
-          </span>
+          {/* Single download/view button with functionality */}
+          {shared.permissions === "download" ? (
+            <button
+              onClick={() =>
+                handleDownloadShared(
+                  shared.document._id,
+                  shared.document.originalName
+                )
+              }
+              className="px-3 py-1 text-xs rounded-full bg-green-100 text-green-800 hover:bg-green-200 transition-colors flex items-center"
+              title="Click to download"
+            >
+              <Download className="w-3 h-3 mr-1" />
+              Download
+            </button>
+          ) : (
+            <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-800 flex items-center">
+              <Eye className="w-3 h-3 mr-1" />
+              View Only
+            </span>
+          )}
 
           {type === "sent" && onRevoke && (
             <button
@@ -352,12 +389,12 @@ const DocumentShare = () => {
       </div>
 
       {shared.shareMessage && (
-        <div className="bg-gray-50 p-3 rounded text-sm text-gray-600 italic">
+        <div className="bg-gray-50 p-3 rounded text-sm text-gray-600 italic mb-3">
           "{shared.shareMessage}"
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-500 mt-3">
+      <div className="flex items-center justify-between text-xs text-gray-500">
         <span>Relationship: {RELATIONSHIP_TYPES[shared.relationshipType]}</span>
         <span
           className={`flex items-center ${

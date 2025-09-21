@@ -17,6 +17,28 @@ import {
   X,
 } from "lucide-react";
 
+const DebugInfo = ({
+  documents,
+  loading,
+  searchTerm,
+  selectedCategory,
+  selectedType,
+}) => {
+  if (process.env.NODE_ENV !== "development") return null;
+
+  return (
+    <div className="bg-yellow-50 border border-yellow-200 p-4 rounded mb-4">
+      <h4 className="font-bold text-yellow-800">Debug Info:</h4>
+      <p>Loading: {loading.toString()}</p>
+      <p>Documents count: {documents.length}</p>
+      <p>Search term: "{searchTerm}"</p>
+      <p>Category: "{selectedCategory}"</p>
+      <p>Type: "{selectedType}"</p>
+      <p>API call: GET /api/documents?page=1&limit=12</p>
+    </div>
+  );
+};
+
 const DocumentList = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,11 +66,21 @@ const DocumentList = () => {
       if (selectedCategory) params.append("category", selectedCategory);
       if (selectedType) params.append("type", selectedType);
 
+      console.log("Fetching documents with params:", params.toString()); // Debug log
+
       const response = await api.get(`/documents?${params}`);
-      setDocuments(response.data.documents);
-      setTotalPages(response.data.totalPages);
+      console.log("Documents response:", response.data); // Debug log
+
+      setDocuments(response.data.documents || []);
+      setTotalPages(response.data.totalPages || 1);
     } catch (error) {
+      console.error(
+        "Fetch documents error:",
+        error.response?.data || error.message
+      );
       toast.error("Failed to fetch documents");
+      setDocuments([]); // Set empty array on error
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -194,6 +226,14 @@ const DocumentList = () => {
       ) return (
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <DebugInfo
+            documents={documents}
+            loading={loading}
+            searchTerm={searchTerm}
+            selectedCategory={selectedCategory}
+            selectedType={selectedType}
+          />
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
             <div>
