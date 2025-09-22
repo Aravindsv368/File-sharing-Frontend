@@ -86,6 +86,7 @@ LOG_EMAILS_TO_FILE=true
 # File Upload Settings
 UPLOAD_PATH=./uploads
 MAX_FILE_SIZE=5242880
+```
 
 ---
 # 🚀 Access the Application
